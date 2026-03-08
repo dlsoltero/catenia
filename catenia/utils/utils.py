@@ -15,7 +15,7 @@ def _trace(root):
     build(root)
     return nodes, edges
 
-def draw_dot(root, format='svg', rankdir='LR'):
+def draw_dot(root, format='svg', rankdir='LR', shapes_only=True):
     """
     format: png | svg | ...
     rankdir: TB (top to bottom graph) | LR (left to right)
@@ -33,8 +33,7 @@ def draw_dot(root, format='svg', rankdir='LR'):
     for n in nodes:
         dot.node(
             name=str(id(n)),
-            # label = f"data {n.data.shape} | grad {n.grad.shape}",
-            label = f"data {n.data} | grad {n.grad}",
+            label = f"data {n.data.shape} | grad {n.grad.shape}" if shapes_only else f"data {n.data} | grad {n.grad}",
             shape='record'
         )
         if n._op:
