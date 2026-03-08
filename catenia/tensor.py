@@ -10,8 +10,10 @@ def ensure_ndarray(data, dtype) -> np.ndarray:
     else:
         arr = np.array(data, dtype=dtype)
 
-    if arr.dtype != dtype:
-        arr = arr.astype(dtype)
+    target_dtype = dtype if dtype is not None else np.float32
+
+    if arr.dtype != target_dtype:
+        arr = arr.astype(target_dtype)
 
     return arr
 
@@ -51,7 +53,7 @@ class Tensor:
     def __init__(
         self,
         data,
-        dtype=np.float32,
+        dtype=None,
         _children: tuple = (),
         _op: str = '' 
     ):
@@ -122,8 +124,15 @@ class Tensor:
 
         return out
 
-    # def sigmoid(self):
-    #     pass
+    def sigmoid(self) -> 'Tensor':
+        data = 1 / (1 + np.exp(-self.data))
+        out = Tensor(data, _children=(self,), _op='sigmoid')
+
+        def _backward():
+            self.grad += (out.data * (1.0 - out.data)) * out.grad
+        out._backward = _backward
+
+        return out
 
     def relu(self):
         data = np.maximum(self.data, 0)
@@ -135,25 +144,19 @@ class Tensor:
 
         return out
 
-    # def tanh(self):
-    #     exp_2x = np.exp(2*self.data)
-    #     data = (exp_2x - 1) / (exp_2x + 1)
-    #     out = Tensor(data, _children=(self,), _op='tanh')
-
-    #     def _backward():
-    #         self.grad += (1 - out.data**2) * out.grad
-    #     out._backward = _backward
-
-    #     return out
-    
     def tanh(self):
-        data = np.tanh(self.data)   # stable for all dtypes
+        x = self.data
+        abs_x = np.abs(x)
+        exp_neg_2_abs_x = np.exp(-2 * abs_x)
+        
+        # This formula is stable because exp() is only called on non-positive numbers
+        data = np.sign(x) * (1 - exp_neg_2_abs_x) / (1 + exp_neg_2_abs_x)
         out = Tensor(data, _children=(self,), _op='tanh')
         
         def _backward():
             self.grad += (1 - out.data**2) * out.grad
         out._backward = _backward
-        
+
         return out
 
 
@@ -359,4 +362,21 @@ class Tensor:
 def rand(*shape, dtype=np.float32) -> Tensor:
     """Return a Tensor of the given shape filled with standard-normal samples."""
     data = np.random.randn(*shape).astype(dtype)
+    return Tensor(data=data, dtype=dtype)
+
+def ones(*shape, dtype=np.float32) -> Tensor:
+    """Return a Tensor of the given shape filled with 1.0."""
+    # Handles both ones(5, 5) and ones((5, 5))
+    if len(shape) == 1 and isinstance(shape[0], (list, tuple)):
+        shape = shape[0]
+    
+    data = np.ones(shape, dtype=dtype)
+    return Tensor(data=data, dtype=dtype)
+
+def zeros(*shape, dtype=np.float32) -> Tensor:
+    """Return a Tensor of the given shape filled with 0.0."""
+    if len(shape) == 1 and isinstance(shape[0], (list, tuple)):
+        shape = shape[0]
+        
+    data = np.zeros(shape, dtype=dtype)
     return Tensor(data=data, dtype=dtype)
