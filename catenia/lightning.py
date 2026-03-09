@@ -46,12 +46,12 @@ class Trainer:
             self.history['train_loss'].append(epoch_loss)
 
             # Validation / Monitoring
-            status_msg = f"Epoch {epoch}/{epochs}, Loss: {epoch_loss:.4f}"
+            status_msg = f"epoch {epoch}/{epochs}, loss: {epoch_loss:.4f}"
 
             if val_data is not None:
                 val_loss = self._run_epoch(val_data, val_target, batch_size, training=False)
                 self.history['val_loss'].append(val_loss)
-                status_msg += f", Val Loss: {val_loss:.4f}"
+                status_msg += f", val loss: {val_loss:.4f}"
 
                 # Early Breaking Logic
                 if val_loss < best_loss:
