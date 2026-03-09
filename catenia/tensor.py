@@ -68,8 +68,23 @@ class Tensor:
         return self.data.shape
 
     @property
+    def ndim(self):
+        return self.data.ndim
+
+    @property
+    def size(self):
+        return self.data.size
+
+    @property
     def dtype(self) -> str:
         return self.data.dtype
+
+    def __len__(self) -> int:
+        # If the data is a scalar (0-d), len() should technically 
+        # raise a TypeError, but NumPy usually handles this via shape.
+        if self.data.ndim == 0:
+            raise TypeError("len() of a 0-d tensor")
+        return len(self.data)
 
     def __repr__(self):
         data_str = np.array2string(
