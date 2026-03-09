@@ -114,6 +114,15 @@ class Tensor:
 
         return out
 
+    def log(self):
+        out = Tensor(np.log(self.data), _children=(self,), _op='log')
+
+        def _backward():
+            self.grad += (1.0 / self.data) * out.grad
+        out._backward = _backward
+
+        return out
+
     def t(self) -> 'Tensor':
         data = self.data.T
         out = Tensor(data, _children=(self, ), _op='transpose')
@@ -331,6 +340,20 @@ class Tensor:
 
             self.grad += np.broadcast_to(grad, self.data.shape) / scale
 
+        out._backward = _backward
+        return out
+
+    def max(self, axis=None, keepdims=False):
+        data = np.max(self.data, axis=axis, keepdims=keepdims)
+        out = Tensor(data, _children=(self,), _op='max')
+
+        def _backward():
+            # Create a mask where the input matches the max value
+            # We use out.data (broadcasted) to find which elements 'won'
+            mask = (self.data == out.data) 
+            # Divide by sum of mask to handle ties (optional, but stable)
+            self.grad += mask * out.grad 
+            
         out._backward = _backward
         return out
 
