@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling", "hatch-requirements-txt"] 
+build-backend = "hatchling.build"
+
+[project]
+name = "catenia"
+version = "0.1.0"
+description = "A lightweight, educational deep learning framework built from scratch with NumPy."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Daniel Lepe Soltero", email = "dlsoltero@gmail.com" }
+]
+keywords = ["deep-learning", "autograd", "neural-networks", "numpy", "education"]
+requires-python = ">=3.12"
+dynamic = ["dependencies"]
+
+[tool.hatch.metadata.hooks.requirements_txt]
+files = ["requirements.txt"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "pytest-cov"
+]
+
+[project.urls]
+Homepage = "https://github.com/you/my-project"
+Issues   = "https://github.com/you/my-project/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["catenia"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "-v -x"
