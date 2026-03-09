@@ -161,15 +161,23 @@ class Module(ABC):
             state[name] = param
         return state
 
-    def load_state_dict(self, state_dict: dict):
+    def load_state_dict(self, state_dict: dict, quiet=False):
         """Copies parameters from state_dict into this module."""
         own_state = self.state_dict()
+        loaded_keys = set()
         for name, param in state_dict.items():
             if name in own_state:
                 # Update data in-place
                 own_state[name].data = param.data
+                loaded_keys.add(name)
             else:
                 raise KeyError(f"Unexpected key {name} in state_dict")
+
+        all_keys = set(own_state.keys())
+        missing_keys = all_keys - loaded_keys
+
+        if missing_keys and not quiet:
+            print(f"WARNING: The following keys from the model were NOT updated: {list(missing_keys)}")
 
 
 class ModuleList(Module):
