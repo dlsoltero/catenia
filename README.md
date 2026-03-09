@@ -20,8 +20,8 @@ It is recommended to use a virtual environment:
 
 ```bash
 # Create and activate a virtual environment
-python -m venv env
-source venv/bin/activate
+python3 -m venv env
+source env/bin/activate
 
 # Install the package
 pip install -e .
@@ -49,8 +49,8 @@ Catenia offers two ways to train: a manual loop for complete control over the tr
 ```python
 import numpy as np
 
-from catenia import Tensor
 import catenia.nn as nn
+from catenia import Tensor
 from catenia.tensor import Tensor
 from catenia.optim import AdamW
 from catenia.utils.data import random_train_test_split
