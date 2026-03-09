@@ -154,6 +154,23 @@ class Module(ABC):
         for p in self.parameters():
             p.zero_grad()
 
+    def state_dict(self) -> OrderedDict:
+        """Returns a dictionary containing a whole state of the module."""
+        state = OrderedDict()
+        for name, param in self.named_parameters():
+            state[name] = param
+        return state
+
+    def load_state_dict(self, state_dict: dict):
+        """Copies parameters from state_dict into this module."""
+        own_state = self.state_dict()
+        for name, param in state_dict.items():
+            if name in own_state:
+                # Update data in-place
+                own_state[name].data = param.data
+            else:
+                raise KeyError(f"Unexpected key {name} in state_dict")
+
 
 class ModuleList(Module):
 
