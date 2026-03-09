@@ -112,6 +112,20 @@ class Tensor:
         joined = ", ".join(parts)
         return f"Tensor({joined})"
 
+    def __getstate__(self):
+        """Define what gets saved. Exclude non-serializable functions."""
+        state = self.__dict__.copy()
+        state['_backward'] = None
+        state['_prev'] = set()
+        state['_op'] = ''
+        return state
+
+    def __setstate__(self, state):
+        """Define how the object is restored."""
+        self.__dict__.update(state)
+        if '_backward' not in state or state['_backward'] is None:
+            self._backward = lambda: None
+
     def __getitem__(self, index):
         data = self.data[index]
         out = Tensor(data, _children=(self,), _op='getitem')
@@ -438,3 +452,16 @@ def zeros(*shape, dtype=np.float32) -> Tensor:
         
     data = np.zeros(shape, dtype=dtype)
     return Tensor(data=data, dtype=dtype)
+
+def save(obj, f):
+    """Saves a dictionary (or any object) to a file."""
+    import pickle
+    with open(f, 'wb') as opened_file:
+        pickle.dump(obj, opened_file)
+
+def load(f):
+    """Loads an object and maps tensors to the specified device."""
+    import pickle
+    with open(f, 'rb') as opened_file:
+        obj = pickle.load(opened_file)
+        return obj

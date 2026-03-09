@@ -1,3 +1,3 @@
-from catenia.tensor import Tensor, rand, ones, zeros
+from catenia.tensor import Tensor, rand, ones, zeros, save, load
 
-__all__ = ['Tensor', 'rand', 'ones', 'zeros']
+__all__ = ['Tensor', 'rand', 'ones', 'zeros', 'save', 'load']
