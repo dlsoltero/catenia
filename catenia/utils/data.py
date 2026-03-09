@@ -67,3 +67,22 @@ class DataLoader:
         data = np.array([item.data if isinstance(item, Tensor) else item for item in items])
         # Note: You'll need to pass the correct dtype here from your framework
         return Tensor(data)
+
+
+def random_train_test_split(X, y=None, test_size=0.2, random_state=None):
+    """Splits arrays into random train and test subsets."""
+    if random_state:
+        np.random.seed(random_state)
+
+    indices = np.arange(X.shape[0])
+    np.random.shuffle(indices)
+
+    test_set_size = int(len(X) * test_size)
+
+    test_indices = indices[:test_set_size]
+    train_indices = indices[test_set_size:]
+
+    if y is None:
+        return X[train_indices], X[test_indices]
+
+    return X[train_indices], X[test_indices], y[train_indices], y[test_indices]
