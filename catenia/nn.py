@@ -137,9 +137,18 @@ class Module(ABC):
         for elem in gen:
             yield elem
 
-    def parameters(self, recurse: bool = True) -> Iterator[Parameter]:
-        for _, param in self.named_parameters(recurse=recurse):
-            yield param
+    # Recursion may cause an optimizer to update the same parameter multiple times
+    # in complex neural networks sharing weights between layers
+
+    # def parameters(self, recurse: bool = True) -> Iterator[Parameter]:
+    #     for _, param in self.named_parameters(recurse=recurse):
+    #         yield param
+
+    def parameters(self):
+        for p in self._parameters.values():
+            yield p
+        for m in self._modules.values():
+            yield from m.parameters()
 
     def zero_grad(self):
         for p in self.parameters():
