@@ -384,12 +384,15 @@ class Tensor:
 
 def rand(*shape, dtype=np.float32) -> Tensor:
     """Return a Tensor of the given shape filled with standard-normal samples."""
+    # Handles both ones(5, 5) and ones((5, 5))
+    if len(shape) == 1 and isinstance(shape[0], (list, tuple)):
+        shape = shape[0]
+
     data = np.random.randn(*shape).astype(dtype)
     return Tensor(data=data, dtype=dtype)
 
 def ones(*shape, dtype=np.float32) -> Tensor:
     """Return a Tensor of the given shape filled with 1.0."""
-    # Handles both ones(5, 5) and ones((5, 5))
     if len(shape) == 1 and isinstance(shape[0], (list, tuple)):
         shape = shape[0]
     
