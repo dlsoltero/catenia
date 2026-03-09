@@ -97,6 +97,20 @@ class Tensor:
         joined = ", ".join(parts)
         return f"Tensor({joined})"
 
+    def __getitem__(self, index):
+        data = self.data[index]
+        out = Tensor(data, _children=(self,), _op='getitem')
+
+        def _backward():
+            # We need to flow the gradient back
+            # only to the indices that were sliced.
+            # We create a zero-filled array of the same shape as the parent
+            # and add the 'out' gradient to the specific index.
+            np.add.at(self.grad, index, out.grad)
+
+        out._backward = _backward
+        return out
+
 
     #
     # Unary operations
