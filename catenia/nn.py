@@ -268,19 +268,19 @@ class Linear(Module):
 
     def __init__(self, nin: int, nout: int, dtype=None):
         super().__init__()
-        self.w = Parameter(np.empty((nin, nout)), dtype=dtype)
-        self.b = Parameter(np.empty(nout), dtype=dtype)
+        self.weight = Parameter(np.empty((nin, nout)), dtype=dtype)
+        self.bias = Parameter(np.empty(nout), dtype=dtype)
 
         # Initialize weight
-        Init.kaiming_uniform_(self.w, nonlinearity='relu')
+        Init.kaiming_uniform(self.weight, nonlinearity='relu')
 
         # Initialize bias
-        fan_in, _ = Init._calculate_fan_in_and_fan_out(self.w)
+        fan_in, _ = Init._calculate_fan_in_and_fan_out(self.weight)
         bound = 1 / np.sqrt(fan_in) if fan_in > 0 else 0
-        self.b.data = np.random.uniform(-bound, bound, size=self.b.shape)
+        self.bias.data = np.random.uniform(-bound, bound, size=self.bias.shape)
 
     def forward(self, x):
-        return x @ self.w + self.b
+        return x @ self.weight + self.bias
         # return out[0] if len(out) == 1 else out
 
 
