@@ -311,6 +311,19 @@ class Conv2d(Module):
         return x.conv2d(self.weight, self.bias, self.stride, self.padding)
 
 
+class Flatten(Module):
+
+    def forward(self, x: Tensor) -> Tensor:
+        batch_size = x.shape[0]
+        return x.reshape(batch_size, -1)
+
+
+class ReLU(Module):
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x.relu()
+
+
 class MSELoss(Module):
 
     def __init__(self, reduction: str | None = 'mean'):
