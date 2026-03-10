@@ -240,6 +240,29 @@ class ModuleList(Module):
         raise NotImplementedError("ModuleList is a container and does not implement forward().")
 
 
+class Sequential(Module):
+    """
+    A sequential container. Modules will be added to it in the order 
+    they are passed in the constructor.
+    """
+    def __init__(self, *args: Module):
+        super().__init__()
+        # We use ModuleList to track the parameters of every layer
+        self.layers = ModuleList(args)
+
+    def forward(self, x: Tensor) -> Tensor:
+        # Pass the input through each layer in the sequence
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+    def __getitem__(self, idx):
+        return self.layers[idx]
+
+    def __len__(self):
+        return len(self.layers)
+
+
 class Linear(Module):
     """Fully connected layer"""
 
