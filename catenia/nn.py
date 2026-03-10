@@ -284,6 +284,33 @@ class Linear(Module):
         # return out[0] if len(out) == 1 else out
 
 
+class Conv2d(Module):
+
+    def __init__(self, in_channels, out_channels, kernel_size: int | tuple, stride=1, padding=0, dtype=None):
+        super().__init__()
+        self.stride = stride
+        self.padding = padding
+
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size, kernel_size)
+
+        # Shape: (out_channels, in_channels, kh, kw)
+        weight_shape = (out_channels, in_channels, *kernel_size)
+
+        self.weight = Parameter(np.empty(weight_shape), dtype=dtype)
+        self.bias = Parameter(np.empty(out_channels), dtype=dtype)
+
+        Init.kaiming_uniform(self.weight, nonlinearity='relu')
+
+        # Standard bias init for Conv
+        fan_in, _ = Init._calculate_fan_in_and_fan_out(self.weight)
+        bound = 1 / np.sqrt(fan_in)
+        self.bias.data = np.random.uniform(-bound, bound, size=self.bias.shape)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x.conv2d(self.weight, self.bias, self.stride, self.padding)
+
+
 class MSELoss(Module):
 
     def __init__(self, reduction: str | None = 'mean'):

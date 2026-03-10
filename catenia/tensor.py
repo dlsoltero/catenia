@@ -357,6 +357,65 @@ class Tensor:
     def matmul(self, other):
         return self @ other
 
+    def conv2d(self, weight: 'Tensor', bias: 'Tensor' = None, stride=1, padding=0) -> 'Tensor':
+            N, C, H, W = self.shape
+            F, _, HH, WW = weight.shape
+            out_h = (H + 2 * padding - HH) // stride + 1
+            out_w = (W + 2 * padding - WW) // stride + 1
+
+            x_padded = np.pad(self.data, ((0,0), (0,0), (padding, padding), (padding, padding)), mode='constant')
+
+            # Vectorized window extraction (im2col)
+            shape = (N, C, HH, WW, out_h, out_w)
+            strides = (
+                x_padded.strides[0], x_padded.strides[1],
+                x_padded.strides[2], x_padded.strides[3],
+                x_padded.strides[2] * stride, x_padded.strides[3] * stride
+            )
+            # x_cols shape: (N, C, HH, WW, out_h, out_w)
+            x_cols = np.lib.stride_tricks.as_strided(x_padded, shape=shape, strides=strides)
+
+            # weight: (F, C, HH, WW) -> 'fcij'
+            # x_cols: (N, C, HH, WW, out_h, out_w) -> 'ncijhw'
+            # output: (N, F, out_h, out_w) -> 'nfhw'
+            out_data = np.einsum('fcij,ncijhw->nfhw', weight.data, x_cols)
+
+            if bias is not None:
+                out_data += bias.data.reshape(1, -1, 1, 1)
+
+            out = Tensor(out_data, _children=(self, weight, bias) if bias is not None else (self, weight), _op='conv2d')
+
+            def _backward():
+                # dL/dBias: Sum over batch, height, and width
+                if bias is not None:
+                    bias.grad += out.grad.sum(axis=(0, 2, 3))
+
+                # dL/dWeight: 'nfhw' (grad) * 'ncijhw' (cols) -> 'fcij' (weight grad)
+                weight.grad += np.einsum('nfhw,ncijhw->fcij', out.grad, x_cols)
+
+                # dL/dx (vectorized): Calculate gradient for the padded input
+                # We use a 'col2im' approach by back-broadcasting the gradient
+                # into the window shapes and then accumulating.
+                d_padded = np.zeros_like(x_padded)
+
+                # Create a view of d_padded to accumulate gradients into
+                d_padded_cols = np.lib.stride_tricks.as_strided(d_padded, shape=shape, strides=strides)
+
+                # Backpropagate through the weights
+                # This is essentially: d_padded_cols += weight.T @ out.grad
+                # dL/dx: 'fcij' (weight) * 'nfhw' (grad) -> 'ncijhw' (padded input grad)
+                np.einsum('fcij,nfhw->ncijhw', weight.data, out.grad, out=d_padded_cols, casting='same_kind')
+
+                # Remove padding to return to original input shape
+                if padding > 0:
+                    self.grad += d_padded[:, :, padding:-padding, padding:-padding]
+                else:
+                    self.grad += d_padded
+            out._backward = _backward
+
+            return out
+
+
     #
     # Reduce operations
     
