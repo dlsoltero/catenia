@@ -12,48 +12,71 @@ from catenia import Tensor
 class Init:
 
     @staticmethod
-    def unactivated(nin: int, nout: int, dtype):
-        """
-        Avoid exploding/vanishing gradient by keeping mean 0 and std 1 in a
-        Linear layer with no activation
+    def _calculate_fan_in_and_fan_out(tensor: Tensor) -> tuple[int, int]:
+        """Computes fan_in and fan_out for a tensor."""
+        dimensions = len(tensor.shape)
+        if dimensions < 2:
+            raise ValueError("Fan in/out can't be computed for tensor with < 2 dims")
 
-        Args:
-            nin: Fan-in or incoming network connections
-            nout: Fan-out or outgoing network connections
+        if dimensions == 2:
+            # Linear: (nin, nout)
+            fan_in = tensor.shape[0]
+            fan_out = tensor.shape[1]
+        else:
+            # Conv2d: (out_channels, in_channels, kh, kw)
+            num_input = tensor.shape[1]
+            num_output = tensor.shape[0]
+            receptive_field_size = np.prod(tensor.shape[2:])
 
-        Return:
-            Normalize weights, bias
-        """
-        weights = np.random.normal(0, 1, size=(nin, nout)) * np.sqrt(1/nin)
-        biases = np.zeros(nout)
-        return Tensor(weights, dtype=dtype), Tensor(biases, dtype=dtype)
+            fan_in = num_input * receptive_field_size
+            fan_out = num_output * receptive_field_size
+
+        return fan_in, fan_out
 
     @staticmethod
-    def kaiming_uniform(nin: int, nout: int, dtype, nonlinearity='relu'):
-        """
-        Kaiming/He initialization for ReLU-based networks.
+    def _calculate_gain(nonlinearity: str) -> float:
+        """Returns the recommended gain value for the given nonlinearity."""
+        if nonlinearity == 'relu':
+            return np.sqrt(2.0)
+        return 1.0
 
-        Good for sigmoid and relu, bad for networks with no activation.
-
-        Args:
-            nin: Fan-in or incoming network connections
-            nout: Fan-out or outgoing network connections
-        
-        Return:
-            Normalize weights, bias
+    @staticmethod
+    def xavier_normal_(tensor: Tensor):
         """
-        # Calculation of 'gain' for ReLU is sqrt(2)
-        gain = np.sqrt(2.0) if nonlinearity == 'relu' else 1.0
+        Fills the input Tensor with values according to the Xavier normal method,
+        using a normal distribution with mean 0 and std = gain * sqrt(2 / (fan_in + fan_out)).
         
-        # Standard deviation for Kaiming is gain / sqrt(fan_in)
-        # For uniform distribution, the limit is sqrt(3) * std
-        std = gain / np.sqrt(nin)
-        limit = np.sqrt(3.0) * std  # This simplifies to np.sqrt(6.0 / nin)
-        
-        w = np.random.uniform(low=-limit, high=limit, size=(nin, nout))
-        b = np.zeros(nout)
-        
-        return Tensor(w, dtype=dtype), Tensor(b, dtype=dtype)
+        This is ideal for layers with no activation or symmetric activations like tanh.
+        """
+        fan_in, fan_out = Init._calculate_fan_in_and_fan_out(tensor)
+
+        # Xavier standard deviation formula: sqrt(2 / (fan_in + fan_out))
+        std = np.sqrt(2.0 / (fan_in + fan_out))
+
+        # In-place update of the tensor's data
+        tensor.data = np.random.normal(0, std, size=tensor.shape)
+
+        return tensor
+
+    @staticmethod
+    def kaiming_uniform(tensor: Tensor, nonlinearity: str = 'relu'):
+        """
+        Fills the input Tensor with values according to the Kaiming uniform method.
+        Good for sigmoid and ReLU, bad for networks with no activation.
+        """
+        fan_in, _ = Init._calculate_fan_in_and_fan_out(tensor)
+
+        # Calculate standard deviation for Kaiming
+        gain = Init._calculate_gain(nonlinearity)
+        std = gain / np.sqrt(fan_in)
+
+        # Calculate boundary for uniform distribution: sqrt(3) * std
+        bound = np.sqrt(3.0) * std
+
+        # In-place update of the tensor's data
+        tensor.data = np.random.uniform(-bound, bound, size=tensor.shape)
+
+        return tensor
 
 
 class Parameter(Tensor):
@@ -220,11 +243,18 @@ class ModuleList(Module):
 class Linear(Module):
     """Fully connected layer"""
 
-    def __init__(self, nin, nout, dtype=None):
+    def __init__(self, nin: int, nout: int, dtype=None):
         super().__init__()
-        w, b = Init.kaiming_uniform(nin=nin, nout=nout, dtype=dtype)
-        self.w = Parameter(w)
-        self.b = Parameter(b)
+        self.w = Parameter(np.empty((nin, nout)), dtype=dtype)
+        self.b = Parameter(np.empty(nout), dtype=dtype)
+
+        # Initialize weight
+        Init.kaiming_uniform_(self.w, nonlinearity='relu')
+
+        # Initialize bias
+        fan_in, _ = Init._calculate_fan_in_and_fan_out(self.w)
+        bound = 1 / np.sqrt(fan_in) if fan_in > 0 else 0
+        self.b.data = np.random.uniform(-bound, bound, size=self.b.shape)
 
     def forward(self, x):
         return x @ self.w + self.b
