@@ -140,6 +140,21 @@ class Tensor:
         out._backward = _backward
         return out
 
+    def reshape(self, *shape) -> 'Tensor':
+        # Handle both reshape(1, 10) and reshape((1, 10))
+        if len(shape) == 1 and isinstance(shape[0], (list, tuple)):
+            shape = shape[0]
+
+        out = Tensor(self.data.reshape(shape), _children=(self,), _op='reshape')
+
+        def _backward():
+            # The gradient for the input is the output gradient 
+            # reshaped back to the input's original shape
+            self.grad += out.grad.reshape(self.shape)
+        out._backward = _backward
+
+        return out
+
 
     #
     # Unary operations
