@@ -83,6 +83,20 @@ class Init:
 
         return tensor
 
+    @staticmethod
+    def bias_uniform(bias: Tensor, weight: Tensor):
+        """
+        Fills the bias tensor with values from U(-bound, bound),
+        where bound = 1 / sqrt(fan_in).
+        """
+        fan_in, _ = Init._calculate_fan_in_and_fan_out(weight)
+        bound = 1 / np.sqrt(fan_in) if fan_in > 0 else 0
+
+        target_dtype = bias.data.dtype
+        new_data = np.random.uniform(-bound, bound, size=bias.shape)
+        bias.data = new_data.astype(target_dtype)
+        return bias
+
 
 class Parameter(Tensor):
 
@@ -281,12 +295,7 @@ class Linear(Module):
 
         # Initialize weight
         Init.kaiming_uniform(self.weight, nonlinearity='relu')
-
-        # Initialize bias
-        fan_in, _ = Init._calculate_fan_in_and_fan_out(self.weight)
-        bound = 1 / np.sqrt(fan_in) if fan_in > 0 else 0
-        new_bias = np.random.uniform(-bound, bound, size=self.bias.shape)
-        self.bias.data = new_bias.astype(self.bias.data.dtype)
+        Init.bias_uniform(self.bias, self.weight)
 
     def forward(self, x):
         return x @ self.weight + self.bias
@@ -311,12 +320,7 @@ class Conv2d(Module):
         self.bias = Parameter(np.empty(out_channels, dtype=target_dtype))
 
         Init.kaiming_uniform(self.weight, nonlinearity='relu')
-
-        # Standard bias init for Conv
-        fan_in, _ = Init._calculate_fan_in_and_fan_out(self.weight)
-        bound = 1 / np.sqrt(fan_in)
-        new_bias = np.random.uniform(-bound, bound, size=self.bias.shape)
-        self.bias.data = new_bias.astype(self.bias.data.dtype)
+        Init.bias_uniform(self.bias, self.weight)
 
     def forward(self, x: Tensor) -> Tensor:
         return x.conv2d(self.weight, self.bias, self.stride, self.padding)
