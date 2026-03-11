@@ -9,6 +9,9 @@ import numpy as np
 from catenia import Tensor
 
 
+_default_dtype = np.float32
+
+
 class Init:
 
     @staticmethod
@@ -41,7 +44,7 @@ class Init:
         return 1.0
 
     @staticmethod
-    def xavier_normal_(tensor: Tensor):
+    def xavier_normal(tensor: Tensor):
         """
         Fills the input Tensor with values according to the Xavier normal method,
         using a normal distribution with mean 0 and std = gain * sqrt(2 / (fan_in + fan_out)).
@@ -54,7 +57,8 @@ class Init:
         std = np.sqrt(2.0 / (fan_in + fan_out))
 
         # In-place update of the tensor's data
-        tensor.data = np.random.normal(0, std, size=tensor.shape)
+        new_data = np.random.normal(0, std, size=tensor.shape)
+        tensor.data = new_data.astype(tensor.data.dtype)
 
         return tensor
 
@@ -74,12 +78,14 @@ class Init:
         bound = np.sqrt(3.0) * std
 
         # In-place update of the tensor's data
-        tensor.data = np.random.uniform(-bound, bound, size=tensor.shape)
+        new_data = np.random.uniform(-bound, bound, size=tensor.shape)
+        tensor.data = new_data.astype(tensor.data.dtype)
 
         return tensor
 
 
 class Parameter(Tensor):
+
     def __init__(self, data, dtype=None) -> None:
         # If data is already a Tensor, use its attributes
         if isinstance(data, Tensor):
@@ -268,8 +274,10 @@ class Linear(Module):
 
     def __init__(self, nin: int, nout: int, dtype=None):
         super().__init__()
-        self.weight = Parameter(np.empty((nin, nout)), dtype=dtype)
-        self.bias = Parameter(np.empty(nout), dtype=dtype)
+        target_dtype = dtype if dtype is not None else _default_dtype
+
+        self.weight = Parameter(np.empty((nin, nout), dtype=target_dtype))
+        self.bias = Parameter(np.empty(nout, dtype=target_dtype))
 
         # Initialize weight
         Init.kaiming_uniform(self.weight, nonlinearity='relu')
@@ -277,7 +285,8 @@ class Linear(Module):
         # Initialize bias
         fan_in, _ = Init._calculate_fan_in_and_fan_out(self.weight)
         bound = 1 / np.sqrt(fan_in) if fan_in > 0 else 0
-        self.bias.data = np.random.uniform(-bound, bound, size=self.bias.shape)
+        new_bias = np.random.uniform(-bound, bound, size=self.bias.shape)
+        self.bias.data = new_bias.astype(self.bias.data.dtype)
 
     def forward(self, x):
         return x @ self.weight + self.bias
@@ -290,6 +299,7 @@ class Conv2d(Module):
         super().__init__()
         self.stride = stride
         self.padding = padding
+        target_dtype = dtype if dtype is not None else _default_dtype
 
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
@@ -297,15 +307,16 @@ class Conv2d(Module):
         # Shape: (out_channels, in_channels, kh, kw)
         weight_shape = (out_channels, in_channels, *kernel_size)
 
-        self.weight = Parameter(np.empty(weight_shape), dtype=dtype)
-        self.bias = Parameter(np.empty(out_channels), dtype=dtype)
+        self.weight = Parameter(np.empty(weight_shape, dtype=target_dtype))
+        self.bias = Parameter(np.empty(out_channels, dtype=target_dtype))
 
         Init.kaiming_uniform(self.weight, nonlinearity='relu')
 
         # Standard bias init for Conv
         fan_in, _ = Init._calculate_fan_in_and_fan_out(self.weight)
         bound = 1 / np.sqrt(fan_in)
-        self.bias.data = np.random.uniform(-bound, bound, size=self.bias.shape)
+        new_bias = np.random.uniform(-bound, bound, size=self.bias.shape)
+        self.bias.data = new_bias.astype(self.bias.data.dtype)
 
     def forward(self, x: Tensor) -> Tensor:
         return x.conv2d(self.weight, self.bias, self.stride, self.padding)
