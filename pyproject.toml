@@ -18,18 +18,18 @@ dynamic = ["dependencies"]
 [tool.hatch.metadata.hooks.requirements_txt]
 files = ["requirements.txt"]
 
+[project.urls]
+Homepage = "https://github.com/dlsoltero/catenia"
+Issues   = "https://github.com/dlsoltero/catenia/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["catenia"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0",
     "pytest-cov"
 ]
-
-[project.urls]
-Homepage = "https://github.com/you/my-project"
-Issues   = "https://github.com/you/my-project/issues"
-
-[tool.hatch.build.targets.wheel]
-packages = ["catenia"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
