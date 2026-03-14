@@ -366,32 +366,7 @@ class CrossEntropyLoss(Module):
     def forward(self, logits: Tensor, target: Tensor) -> Tensor:
         """
         Args:
-            logits: Predicted raw scores (Batch, Classes)
-            target: Ground truth indices (Batch,) or One-hot (Batch, Classes)
+            logits: (Batch, Classes) raw scores.
+            target: (Batch, Classes) one-hot OR (Batch,) class indices.
         """
-        # Log-Sum-Exp trick for stability: log(sum(exp(x)))
-        # Subtract max for numerical stability: exp(x - max)
-        max_logits = logits.max(axis=1, keepdims=True)
-        stable_logits = logits - max_logits
-        log_sum_exp = stable_logits.exp().sum(axis=1, keepdims=True).log()
-        
-        # Log Softmax
-        log_probs = stable_logits - log_sum_exp
-
-        # Extract the log-probability of the true class (NLL)
-        # If target is one-hot, we can just multiply and sum
-        if logits.shape == target.shape:
-            # NLL Loss (Assumes target is one-hot or same shape as logits)
-            loss = -(target * log_probs).sum(axis=1)
-        else:
-            # If target is indices, you'd ideally use advanced indexing
-            # Assuming your Tensor handles basic selection or target is converted
-            # For simplicity in this snippet, we treat target as one-hot
-            raise NotImplementedError("Implement indexing for integer targets or pass one-hot.")
-
-        # Apply reduction
-        if self.reduction == 'mean':
-            return loss.mean()
-        elif self.reduction == 'sum':
-            return loss.sum()
-        return loss
+        return logits.cross_entropy(target, reduction=self.reduction)

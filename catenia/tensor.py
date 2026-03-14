@@ -155,6 +155,27 @@ class Tensor:
 
         return out
 
+    def gather_nd(self, indices: 'Tensor') -> 'Tensor':
+        """
+        Gathers values from the tensor along the last axis using integer indices.
+        Assumes self is (Batch, Classes) and indices is (Batch,).
+        """
+        # Ensure indices are integers for indexing
+        idx_data = indices.data.astype(int)
+        batch_range = np.arange(self.data.shape[0])
+
+        # Forward pass: extract log-probs of the true class
+        out_data = self.data[batch_range, idx_data]
+        out = Tensor(out_data, _children=(self,), _op='gather')
+
+        def _backward():
+            # Backward pass: scatter the gradient back only to the selected indices
+            # np.add.at is used to handle duplicate indices correctly
+            np.add.at(self.grad, (batch_range, idx_data), out.grad)
+        out._backward = _backward
+
+        return out
+
 
     #
     # Unary operations
@@ -211,6 +232,30 @@ class Tensor:
 
         return out
 
+    def leaky_relu(self, alpha=0.01):
+        data = np.where(self.data > 0, self.data, self.data * alpha)
+        out = Tensor(data, _children=(self,), _op='LeakyReLU')
+
+        def _backward():
+            # Gradient is 1 if x > 0, and alpha if x <= 0
+            mask = np.where(self.data > 0, 1.0, alpha)
+            self.grad += mask * out.grad
+        out._backward = _backward
+
+        return out
+
+    def elu(self, alpha=1.0):
+        data = np.where(self.data > 0, self.data, alpha * (np.exp(self.data) - 1))
+        out = Tensor(data, _children=(self,), _op='ELU')
+
+        def _backward():
+            # Gradient is 1 if x > 0, and alpha * exp(x) (which is data + alpha) if x <= 0
+            grad_map = np.where(self.data > 0, 1.0, out.data + alpha)
+            self.grad += grad_map * out.grad
+        out._backward = _backward
+
+        return out
+
     def tanh(self):
         x = self.data
         abs_x = np.abs(x)
@@ -222,6 +267,30 @@ class Tensor:
         
         def _backward():
             self.grad += (1 - out.data**2) * out.grad
+        out._backward = _backward
+
+        return out
+
+    def softmax(self, axis=-1) -> 'Tensor':
+        # Subtract max for numerical stability (prevents exp overflow)
+        max_val = self.data.max(axis=axis, keepdims=True)
+        exps = np.exp(self.data - max_val)
+        sum_exps = exps.sum(axis=axis, keepdims=True)
+
+        data = exps / sum_exps
+        out = Tensor(data, _children=(self,), _op='softmax')
+
+        def _backward():
+            # Softmax gradient: dS_i/dx_j = S_i(delta_ij - S_j)
+            # This is more efficient if handled during CrossEntropy,
+            # but for a general implementation:
+            for i, (s, grad) in enumerate(zip(out.data, out.grad)):
+                s = s.reshape(-1, 1)
+                # Jacobian matrix: diag(s) - s @ s.T
+                jacobian = np.diagflat(s) - (s @ s.T)
+                self.grad[i] += (jacobian @ grad.reshape(-1, 1)).reshape(self.shape[1:])
+        # Note: The loop-based backward is slow for large batches.
+        # Usually, Softmax is paired with CrossEntropy for a simplified gradient.
         out._backward = _backward
 
         return out
@@ -414,6 +483,89 @@ class Tensor:
             out._backward = _backward
 
             return out
+
+    def binary_cross_entropy(self, target: 'Tensor') -> 'Tensor':
+            """
+            Computes Binary Cross Entropy (BCE): -[y*log(p) + (1-y)*log(1-p)]
+            Assumes 'self' are probabilities (output of sigmoid)
+            and 'target' are single values {0,1}
+            """
+            target = ensure_tensor(target, dtype=self.dtype)
+
+            #  Clip predictions to avoid log(0) or log(1)
+            eps = 1e-12
+            clipped_data = np.clip(self.data, eps, 1.0 - eps)
+
+            # Create a child tensor for the clipped data
+            # We use a simple identity-style backward for the clipping operation
+            p = Tensor(clipped_data, _children=(self,), _op='clip')
+            def _clip_backward():
+                self.grad += p.grad
+            p._backward = _clip_backward
+
+            # Calculate BCE using existing tensor operations
+            # L = -(y * log(p) + (1 - y) * log(1 - p))
+            term1 = target * p.log()
+            term2 = (1.0 - target) * (1.0 - p).log()
+
+            # Final loss is the negative mean of the combined terms
+            return (term1 + term2).mean() * -1.0
+
+    def categorical_cross_entropy(self, target: 'Tensor') -> 'Tensor':
+            """
+            Computes Categorical Cross Entropy loss.
+            Assumes 'self' is the output of a softmax (probabilities)
+            and 'target' is one-hot encoded.
+            """
+            target = ensure_tensor(target, dtype=self.dtype)
+
+            # Clip self.data to avoid log(0) or log(1)
+            # We create a new tensor with clipped data to prevent NaN gradients
+            eps = 1e-12
+            clipped_data = np.clip(self.data, eps, 1.0 - eps)
+            clipped_self = Tensor(clipped_data, _children=(self,), _op='clip')
+
+            # Manually define the clipping backward (identity-ish)
+            def _clip_backward():
+                self.grad += clipped_self.grad
+            clipped_self._backward = _clip_backward
+
+            # Loss = -sum(target * log(clipped_probs))
+            log_probs = clipped_self.log()
+            elementwise_loss = target * log_probs
+
+            # Sum over classes (axis -1), then mean over the batch
+            return elementwise_loss.sum().mean() * -1.0
+
+    def cross_entropy(self, target: 'Tensor', axis=-1, reduction: str | None = 'mean') -> 'Tensor':
+        """
+        Computes Categorical Cross Entropy (Stable LogSoftmax + NLL).
+        Handles both one-hot targets (Batch, Classes) and integer-index targets (Batch,).
+        """
+        target = ensure_tensor(target, dtype=self.dtype)
+
+        # Stable LogSoftmax logic
+        max_val = self.max(axis=axis, keepdims=True)
+        shifted_logits = self - max_val
+        log_sum_exp = shifted_logits.exp().sum(axis=axis, keepdims=True).log()
+        log_probs = shifted_logits - log_sum_exp
+
+        # Selection Logic (NLL)
+        if self.shape == target.shape:
+            # Case A: target is one-hot (Batch, Classes)
+            loss = (target * log_probs).sum(axis=axis) * -1.0
+        else:
+            # Case B: target is integer indices (Batch,)
+            # Use our new gather_nd to pick the correct class log-probs
+            loss = log_probs.gather_nd(target) * -1.0
+
+        # Apply reduction
+        if reduction == 'mean':
+            return loss.mean()
+        elif reduction == 'sum':
+            return loss.sum()
+
+        return loss
 
 
     #
